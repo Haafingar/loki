@@ -159,16 +159,16 @@ namespace config
   uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 114;
   uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 115;
   uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 116;
-  uint16_t const P2P_DEFAULT_PORT = 18080;
-  uint16_t const RPC_DEFAULT_PORT = 18081;
-  uint16_t const ZMQ_RPC_DEFAULT_PORT = 18082;
+  uint16_t const P2P_DEFAULT_PORT = 22020;
+  uint16_t const RPC_DEFAULT_PORT = 22021;
+  uint16_t const ZMQ_RPC_DEFAULT_PORT = 22022;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x12 ,0x31, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10
-    } }; // Bender's nightmare
-  std::string const GENESIS_TX = "";
+      0x46 ,0x61, 0x72, 0x62 , 0x61, 0x75 , 0x74, 0x69, 0x2b, 0x4c, 0x61, 0x75, 0x66, 0x65, 0x79, 0x0a
+    } }; //  LOKI's Genesis
+  std::string const GENESIS_TX = "023c01ff000380808d93f5d77102b481535886cacd503bc2152142c94bce1451aa1fafe846412c29a0960e638ef28080b4ccd4dfc6030250ed2cc9c0d5873f55c09ab7b4103932600f1a612c702647196382e61625ac06808088fccdbcc32302b4f7ef99d56957ebd91922c9a8619dd58ba388b2adfac383754af56e8ecf03a12101182f6a124b8b5b29d8c2571c6c8a9b2ff585366dc8f668d7570c57f71605866a00";
   uint32_t const GENESIS_NONCE = 10000;
 
-  std::string const GOVERNANCE_WALLET_ADDRESS = "";
+  std::string const GOVERNANCE_WALLET_ADDRESS = "LA8UjvWDfk97jh1LEpbJt8AnUe7B6G43r2XE7ZzfZ1V51LWk9jS9gVkZsvB31hqYEwYEmgJkYpwp6Na5jovohon22QbqhbT";
   
   namespace testnet
   {
