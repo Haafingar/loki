@@ -163,12 +163,12 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 22021;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 22022;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x46,0x61, 0x72, 0x62, 0x61, 0x75, 0x74, 0x69, 0x2b, 0x4c, 0x61, 0x75, 0x66, 0x65, 0x79, 0x0a
+      0x46, 0x61, 0x72, 0x62, 0x61, 0x75, 0x74, 0x69, 0x26, 0x4c, 0x61, 0x75, 0x66, 0x65, 0x79, 0x0a
     } }; //  LOKI's Genesis
   std::string const GENESIS_TX = "023c01ff000380808d93f5d77102b481535886cacd503bc2152142c94bce1451aa1fafe846412c29a0960e638ef28080b4ccd4dfc6030250ed2cc9c0d5873f55c09ab7b4103932600f1a612c702647196382e61625ac06808088fccdbcc32302b4f7ef99d56957ebd91922c9a8619dd58ba388b2adfac383754af56e8ecf03a12101182f6a124b8b5b29d8c2571c6c8a9b2ff585366dc8f668d7570c57f71605866a00";
-  uint32_t const GENESIS_NONCE = 10000;
+  uint32_t const GENESIS_NONCE = 1022201;
 
-  std::string const GOVERNANCE_WALLET_ADDRESS = "LA8UjvWDfk97jh1LEpbJt8AnUe7B6G43r2XE7ZzfZ1V51LWk9jS9gVkZsvB31hqYEwYEmgJkYpwp6Na5jovohon22QbqhbT";
+  std::string const GOVERNANCE_WALLET_ADDRESS = "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL";
   
   namespace testnet
   {
