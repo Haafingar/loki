@@ -1,7 +1,7 @@
 # Loki
 
 Copyright (c) 2018 The Loki Project.   
-Portions Copyright (c) 2014-2017 The Monero Project.   
+Portions Copyright (c) 2014-2018 The Monero Project.   
 Portions Copyright (c) 2012-2013 The Cryptonote developers.
 
 ## Development resources
@@ -12,9 +12,11 @@ Portions Copyright (c) 2012-2013 The Cryptonote developers.
 - GitHub: [https://github.com/loki-project/loki](https://github.com/loki-project/loki)
 - Discord: [https://discord.gg/67GXfD6](https://discord.gg/67GXfD6)
 
-## Information
+## Vulnerability disclosure
 
-# Please note, only the testnet is currently operational. To connect to the testnet, run lokid with the --testnet flag
+- Check out our [Vulnerability Response Process](https://github.com/loki-project/Meta/blob/master/VULNERABILITY_RESPONSE_LOKI.md), encourages prompt disclosure of any Vulnerabilities
+
+## Information
 
 Loki is a private cryptocurrency based on Monero. Over the course of the coming months, the Loki project aims to offer an incenvised full node layer with a secondary p2p network that offers a private communications layer based on the Tox protocol.
 
@@ -109,6 +111,8 @@ invokes cmake commands as needed.
 * **Optional**: to build statically-linked binaries:
 
          make release-static
+
+Dependencies need to be built with -fPIC. Static libraries usually aren't, so you may have to build them yourself with -fPIC. Refer to their documentation for how to build them.
 
 * **Optional**: build documentation in `doc/html` (omit `HAVE_DOT=YES` if `graphviz` is not installed):
 
