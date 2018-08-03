@@ -142,13 +142,15 @@ struct options {
   const command_line::arg_descriptor<bool> testnet = {"testnet", tools::wallet2::tr("For testnet. Daemon must also be launched with --testnet flag"), false};
   const command_line::arg_descriptor<bool> stagenet = {"stagenet", tools::wallet2::tr("For stagenet. Daemon must also be launched with --stagenet flag"), false};
   const command_line::arg_descriptor<bool> restricted = {"restricted-rpc", tools::wallet2::tr("Restricts to view-only commands"), false};
-  const command_line::arg_descriptor<std::string, false, true> shared_ringdb_dir = {
+  const command_line::arg_descriptor<std::string, false, true, 2> shared_ringdb_dir = {
     "shared-ringdb-dir", tools::wallet2::tr("Set shared ring database path"),
     get_default_ringdb_path(),
-    testnet,
-    [](bool testnet, bool defaulted, std::string val)->std::string {
-      if (testnet)
+    {{ &testnet, &stagenet }},
+    [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
+      if (testnet_stagenet[0])
         return (boost::filesystem::path(val) / "testnet").string();
+      else if (testnet_stagenet[1])
+        return (boost::filesystem::path(val) / "stagenet").string();
       return val;
     }
   };
@@ -577,7 +579,7 @@ size_t estimate_tx_size(bool use_rct, int n_inputs, int mixin, int n_outputs, si
 
 uint8_t get_bulletproof_fork()
 {
-  return 8;
+  return 9;
 }
 
 crypto::hash8 get_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
@@ -1030,6 +1032,16 @@ void wallet2::check_acc_out_precomp(const tx_out &o, const crypto::key_derivatio
   tx_scan_info.error = false;
 }
 //----------------------------------------------------------------------------------------------------
+void wallet2::check_acc_out_precomp_once(const tx_out &o, const crypto::key_derivation &derivation, const std::vector<crypto::key_derivation> &additional_derivations, size_t i, tx_scan_info_t &tx_scan_info, bool &already_seen) const
+{
+  tx_scan_info.received = boost::none;
+  if (already_seen)
+    return;
+  check_acc_out_precomp(o, derivation, additional_derivations, i, tx_scan_info);
+  if (tx_scan_info.received)
+    already_seen = true;
+}
+//----------------------------------------------------------------------------------------------------
 static uint64_t decodeRct(const rct::rctSig & rv, const crypto::key_derivation &derivation, unsigned int i, rct::key & mask, hw::device &hwdev)
 {
   crypto::secret_key scalar1;
@@ -1110,6 +1122,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   // Don't try to extract tx public key if tx has no ouputs
   size_t pk_index = 0;
   std::vector<tx_scan_info_t> tx_scan_info(tx.vout.size());
+  std::deque<bool> output_found(tx.vout.size(), false);
   while (!tx.vout.empty())
   {
     // if tx.vout is not empty, we loop through all tx pubkeys
@@ -1144,13 +1157,16 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     // additional tx pubkeys and derivations for multi-destination transfers involving one or more subaddresses
     std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
     std::vector<crypto::key_derivation> additional_derivations;
-    for (size_t i = 0; i < additional_tx_pub_keys.size(); ++i)
+    if (pk_index == 1)
     {
-      additional_derivations.push_back({});
-      if (!hwdev.generate_key_derivation(additional_tx_pub_keys[i], keys.m_view_secret_key, additional_derivations.back()))
+      for (size_t i = 0; i < additional_tx_pub_keys.size(); ++i)
       {
-        MWARNING("Failed to generate key derivation from tx pubkey, skipping");
-        additional_derivations.pop_back();
+        additional_derivations.push_back({});
+        if (!hwdev.generate_key_derivation(additional_tx_pub_keys[i], keys.m_view_secret_key, additional_derivations.back()))
+        {
+          MWARNING("Failed to generate key derivation from tx pubkey, skipping");
+          additional_derivations.pop_back();
+        }
       }
     }
     hwdev_lock.unlock();
@@ -1161,7 +1177,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     }
     else if (miner_tx && m_refresh_type == RefreshOptimizeCoinbase)
     {
-      check_acc_out_precomp(tx.vout[0], derivation, additional_derivations, 0, tx_scan_info[0]);
+      check_acc_out_precomp_once(tx.vout[0], derivation, additional_derivations, 0, tx_scan_info[0], output_found[0]);
       THROW_WALLET_EXCEPTION_IF(tx_scan_info[0].error, error::acc_outs_lookup_error, tx, tx_pub_key, m_account.get_keys());
 
       // this assumes that the miner tx pays a single address
@@ -1171,8 +1187,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
         // the first one was already checked
         for (size_t i = 1; i < tx.vout.size(); ++i)
         {
-          tpool.submit(&waiter, boost::bind(&wallet2::check_acc_out_precomp, this, std::cref(tx.vout[i]), std::cref(derivation), std::cref(additional_derivations), i,
-            std::ref(tx_scan_info[i])));
+          tpool.submit(&waiter, boost::bind(&wallet2::check_acc_out_precomp_once, this, std::cref(tx.vout[i]), std::cref(derivation), std::cref(additional_derivations), i,
+            std::ref(tx_scan_info[i]), std::ref(output_found[i])));
         }
         waiter.wait();
         // then scan all outputs from 0
@@ -1194,8 +1210,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       for (size_t i = 0; i < tx.vout.size(); ++i)
       {
-        tpool.submit(&waiter, boost::bind(&wallet2::check_acc_out_precomp, this, std::cref(tx.vout[i]), std::cref(derivation), std::cref(additional_derivations), i,
-            std::ref(tx_scan_info[i])));
+        tpool.submit(&waiter, boost::bind(&wallet2::check_acc_out_precomp_once, this, std::cref(tx.vout[i]), std::cref(derivation), std::cref(additional_derivations), i,
+            std::ref(tx_scan_info[i]), std::ref(output_found[i])));
       }
       waiter.wait();
 
@@ -1216,7 +1232,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       for (size_t i = 0; i < tx.vout.size(); ++i)
       {
-        check_acc_out_precomp(tx.vout[i], derivation, additional_derivations, i, tx_scan_info[i]);
+        check_acc_out_precomp_once(tx.vout[i], derivation, additional_derivations, i, tx_scan_info[i], output_found[i]);
         THROW_WALLET_EXCEPTION_IF(tx_scan_info[i].error, error::acc_outs_lookup_error, tx, tx_pub_key, m_account.get_keys());
         if (tx_scan_info[i].received)
         {
@@ -2884,6 +2900,7 @@ bool wallet2::verify_password(const epee::wipeable_string& password) const
  * \param keys_file_name  Keys file to verify password for
  * \param password        Password to verify
  * \param no_spend_key    If set = only verify view keys, otherwise also spend keys
+ * \param hwdev           The hardware device to use
  * \return                true if password is correct
  *
  * for verification only
@@ -2934,9 +2951,10 @@ bool wallet2::verify_password(const std::string& keys_file_name, const epee::wip
 
 /*!
  * \brief  Generates a wallet or restores one.
- * \param  wallet_        Name of wallet file
- * \param  password       Password of wallet file
- * \param  multisig_data  The multisig restore info and keys
+ * \param  wallet_              Name of wallet file
+ * \param  password             Password of wallet file
+ * \param  multisig_data        The multisig restore info and keys
+ * \param  create_address_file  Whether to create an address file
  */
 void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
   const std::string& multisig_data, bool create_address_file)
@@ -3029,12 +3047,13 @@ void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& 
 
 /*!
  * \brief  Generates a wallet or restores one.
- * \param  wallet_        Name of wallet file
- * \param  password       Password of wallet file
- * \param  recovery_param If it is a restore, the recovery key
- * \param  recover        Whether it is a restore
- * \param  two_random     Whether it is a non-deterministic wallet
- * \return                The secret key of the generated wallet
+ * \param  wallet_                 Name of wallet file
+ * \param  password                Password of wallet file
+ * \param  recovery_param          If it is a restore, the recovery key
+ * \param  recover                 Whether it is a restore
+ * \param  two_random              Whether it is a non-deterministic wallet
+ * \param  create_address_file     Whether to create an address file
+ * \return                         The secret key of the generated wallet
  */
 crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
   const crypto::secret_key& recovery_param, bool recover, bool two_random, bool create_address_file)
@@ -3130,9 +3149,11 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
 
 /*!
 * \brief Creates a watch only wallet from a public address and a view secret key.
-* \param  wallet_        Name of wallet file
-* \param  password       Password of wallet file
-* \param  viewkey        view secret key
+* \param  wallet_                 Name of wallet file
+* \param  password                Password of wallet file
+* \param  account_public_address  The account's public address
+* \param  viewkey                 view secret key
+* \param  create_address_file     Whether to create an address file
 */
 void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
   const cryptonote::account_public_address &account_public_address,
@@ -3179,10 +3200,12 @@ void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& 
 
 /*!
 * \brief Creates a wallet from a public address and a spend/view secret key pair.
-* \param  wallet_        Name of wallet file
-* \param  password       Password of wallet file
-* \param  spendkey       spend secret key
-* \param  viewkey        view secret key
+* \param  wallet_                 Name of wallet file
+* \param  password                Password of wallet file
+* \param  account_public_address  The account's public address
+* \param  spendkey                spend secret key
+* \param  viewkey                 view secret key
+* \param  create_address_file     Whether to create an address file
 */
 void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
   const cryptonote::account_public_address &account_public_address,
@@ -3629,8 +3652,9 @@ void wallet2::rewrite(const std::string& wallet_name, const epee::wipeable_strin
 }
 /*!
  * \brief Writes to a file named based on the normal wallet (doesn't generate key, assumes it's already there)
- * \param wallet_name Base name of wallet file
- * \param password    Password for wallet file
+ * \param wallet_name       Base name of wallet file
+ * \param password          Password for wallet file
+ * \param new_keys_filename [OUT] Name of new keys file
  */
 void wallet2::write_watch_only_wallet(const std::string& wallet_name, const epee::wipeable_string& password, std::string &new_keys_filename)
 {
@@ -5014,7 +5038,7 @@ bool wallet2::save_multisig_tx(const multisig_tx_set &txs, const std::string &fi
   return epee::file_io_utils::save_string_to_file(filename, ciphertext);
 }
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::save_multisig_tx(const std::vector<pending_tx>& ptx_vector)
+wallet2::multisig_tx_set wallet2::make_multisig_tx_set(const std::vector<pending_tx>& ptx_vector) const
 {
   multisig_tx_set txs;
   txs.m_ptx = ptx_vector;
@@ -5026,8 +5050,12 @@ std::string wallet2::save_multisig_tx(const std::vector<pending_tx>& ptx_vector)
   }
 
   txs.m_signers.insert(get_multisig_signer_public_key());
+  return txs;
+}
 
-  return save_multisig_tx(txs);
+std::string wallet2::save_multisig_tx(const std::vector<pending_tx>& ptx_vector)
+{
+  return save_multisig_tx(make_multisig_tx_set(ptx_vector));
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::save_multisig_tx(const std::vector<pending_tx>& ptx_vector, const std::string &filename)
@@ -5648,7 +5676,7 @@ bool wallet2::find_and_save_rings(bool force)
   for (size_t slice = 0; slice < txs_hashes.size(); slice += SLICE_SIZE)
   {
     req.decode_as_json = false;
-    req.prune = true;
+    req.prune = false;
     req.txs_hashes.clear();
     size_t ntxes = slice + SLICE_SIZE > txs_hashes.size() ? txs_hashes.size() - slice : SLICE_SIZE;
     for (size_t s = slice; s < slice + ntxes; ++s)
@@ -10175,13 +10203,13 @@ std::string wallet2::make_uri(const std::string &address, const std::string &pay
 //----------------------------------------------------------------------------------------------------
 bool wallet2::parse_uri(const std::string &uri, std::string &address, std::string &payment_id, uint64_t &amount, std::string &tx_description, std::string &recipient_name, std::vector<std::string> &unknown_parameters, std::string &error)
 {
-  if (uri.substr(0, 7) != "loki:")
+  if (uri.substr(0, 5) != "loki:")
   {
     error = std::string("URI has wrong scheme (expected \"loki:\"): ") + uri;
     return false;
   }
 
-  std::string remainder = uri.substr(7);
+  std::string remainder = uri.substr(5);
   const char *ptr = strchr(remainder.c_str(), '?');
   address = ptr ? remainder.substr(0, ptr-remainder.c_str()) : remainder;
 
@@ -10191,8 +10219,9 @@ bool wallet2::parse_uri(const std::string &uri, std::string &address, std::strin
     error = std::string("URI has wrong address: ") + address;
     return false;
   }
-  if (!strchr(remainder.c_str(), '?'))
+  if (!strchr(remainder.c_str(), '?')) {
     return true;
+  }
 
   std::vector<std::string> arguments;
   std::string body = remainder.substr(address.size() + 1);
